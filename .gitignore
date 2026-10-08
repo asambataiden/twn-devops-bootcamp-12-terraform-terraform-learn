@@ -1,0 +1,10 @@
+# local terraform directory
+.terraform
+
+# local terraform state files
+*.tfstate
+**.tfstate.backup
+
+
+# tf vars files containing sensitive data, such as provider credentials
+*.tfvars
