@@ -20,6 +20,8 @@ variable "public_key_location" {}
 
 variable "user_data_script_location" {}
 
+variable "private_key_location" {}
+
 # Creating our vpc
 resource "aws_vpc" "myapp_vpc" {
   cidr_block = var.vpc_cidr_block
@@ -179,10 +181,37 @@ resource "aws_instance" "myapp_server" {
   associate_public_ip_address = true
   key_name = aws_key_pair.ssh_key_pair.key_name
 
-  user_data = file(var.user_data_script_location)
+  #user_data = file(var.user_data_script_location)
 
   # make sure server is clean when we destroy and create new server
   user_data_replace_on_change = true
+
+  # allows us to connect to the remote server and execute command on the server
+  connection {
+    type = "ssh"
+    user = "ec2-user"
+    host = self.public_ip
+    private_key = file(var.private_key_location)
+
+  }
+
+  /*
+  ########## Provitionals are not recommended , on in worst case scenario  . Not advisable for Production not best practice #############
+    # copy file from local to remote server
+    provisioner "file" {
+      source = var.user_data_script_location
+      destination = "/home/ec2-user/entry-script.sh"   }
+
+    provisioner "remote-exec" {
+      inline = [
+        "chmod +x /home/ec2-user/entry-script.sh",
+        "sudo /home/ec2-user/entry-script.sh"
+      ]
+
+    }*/
+  provisioner "remote-exec" {
+    script = var.user_data_script_location
+  }
 
   tags = {
     Name = "${var.env_prefix}-server"
