@@ -7,4 +7,4 @@
 
 
 # tf vars files containing sensitive data, such as provider credentials
-*.tfvars
+#*.tfvars
