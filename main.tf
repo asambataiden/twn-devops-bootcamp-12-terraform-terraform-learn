@@ -1,48 +1,139 @@
 
 provider "aws" {
-    region = "eu-north-1"
+  region = "eu-north-1"
 }
 
-variable "cidr_block" {
-  description = "CIDR blocks and name tags for vpc and subnet"
-  type        = list(object({
-    cidr = string
-    name = string
-  }))
-}
+variable "vpc_cidr_block" {}
+variable "subnet_cidr_block" {}
 
+variable "availability_zone" {}
 
+variable "env_prefix" {}
 
-variable "environment" {
-  description = "Development environment"
-  type        = string
-}
+variable "my_ip" {}
 
-variable "availability_zone" {
-  description = "Availability zone for the subnet"
-  type        = string
-}
-
-resource "aws_vpc" "development_vpc" {
-  cidr_block = var.cidr_block[0].cidr
+# Creating our vpc
+resource "aws_vpc" "myapp_vpc" {
+  cidr_block = var.vpc_cidr_block
   tags = {
-    Name = var.cidr_block[0].name
+    Name = "${ var.env_prefix }-vpc"
   }
 }
 
-resource "aws_subnet" "development_subnet-1" {
-  vpc_id            = aws_vpc.development_vpc.id
-  cidr_block        = var.cidr_block[1].cidr
+# Creating subnet for our vpc
+resource "aws_subnet" "myapp_subnet-1" {
+  vpc_id            = aws_vpc.myapp_vpc.id
+  cidr_block        = var.subnet_cidr_block
   availability_zone = var.availability_zone
   tags = {
-    Name = var.cidr_block[1].name
+    Name = "${ var.env_prefix }-subnet-1"
   }
 }
 
-output "dev-vpc-id" {
-  value = aws_vpc.development_vpc.id
+
+# creating Internet Gate-Way
+resource "aws_internet_gateway" "myapp_igw" {
+  vpc_id = aws_vpc.myapp_vpc.id
+  tags = {
+    Name = "${ var.env_prefix }-internet-gateway"
+  }
+}
+/*
+# Creating a new router table
+resource "aws_route_table" "myapp_route_table" {
+  vpc_id = aws_vpc.myapp_vpc.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.myapp_igw.id
+  }
+  tags = {
+    Name = "${ var.env_prefix }-route-table"
+  }
 }
 
-output "dev-subnet-1-id" {
-  value = aws_subnet.development_subnet-1.id
+# associate our subnet to our route table
+resource "aws_route_table_association" "myapp_route_table_association" {
+  subnet_id      = aws_subnet.myapp_subnet-1.id
+  route_table_id = aws_route_table.myapp_route_table.id
+}*/
+
+# using default rout table created while creating the vpc
+resource "aws_default_route_table" "main-route-table" {
+  default_route_table_id = aws_vpc.myapp_vpc.default_route_table_id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.myapp_igw.id
+  }
+  tags = {
+    Name = "${ var.env_prefix }-main-route-table"
+  }
+}
+
+# associate our subnet to our route table
+resource "aws_route_table_association" "myapp_route_table_association" {
+  subnet_id      = aws_subnet.myapp_subnet-1.id
+  route_table_id = aws_default_route_table.main-route-table.id
+}
+/*
+# Creating a new Security Group
+resource "aws_security_group" "myapp_sg" {
+  name        = "${var.env_prefix}-myapp-sg"
+  description = "Security group for myapp"
+  vpc_id      = aws_vpc.myapp_vpc.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.env_prefix}-myapp-sg"
+  }
+}*/
+
+# using default security group created while creating the vpc
+# The difference between creating a new sg and using the existing default one is the resource name
+resource "aws_default_security_group" "default_sg" {
+  vpc_id      = aws_vpc.myapp_vpc.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.env_prefix}-default-sg"
+  }
 }
