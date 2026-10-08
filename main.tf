@@ -18,6 +18,8 @@ variable "instance_type" {}
 
 variable "public_key_location" {}
 
+variable "user_data_script_location" {}
+
 # Creating our vpc
 resource "aws_vpc" "myapp_vpc" {
   cidr_block = var.vpc_cidr_block
@@ -119,8 +121,8 @@ resource "aws_default_security_group" "default_sg" {
   vpc_id      = aws_vpc.myapp_vpc.id
 
   ingress {
-    from_port   = 80
-    to_port     = 80
+    from_port   = 8080
+    to_port     = 8080
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -176,6 +178,11 @@ resource "aws_instance" "myapp_server" {
 
   associate_public_ip_address = true
   key_name = aws_key_pair.ssh_key_pair.key_name
+
+  user_data = file(var.user_data_script_location)
+
+  # make sure server is clean when we destroy and create new server
+  user_data_replace_on_change = true
 
   tags = {
     Name = "${var.env_prefix}-server"
