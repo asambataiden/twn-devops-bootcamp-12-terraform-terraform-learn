@@ -18,13 +18,17 @@ variable "instance_type" {}
 
 variable "public_key_location" {}
 
+variable "ssh_key_private" {}
+
+variable "ANSIBLE_USER" {}
+
 variable "user_data_script_location" {}
 
 # Creating our vpc
 resource "aws_vpc" "myapp_vpc" {
   cidr_block = var.vpc_cidr_block
   tags = {
-    Name = "${ var.env_prefix }-vpc"
+    Name = "${var.env_prefix}-vpc"
   }
 }
 
@@ -34,7 +38,7 @@ resource "aws_subnet" "myapp_subnet-1" {
   cidr_block        = var.subnet_cidr_block
   availability_zone = var.availability_zone
   tags = {
-    Name = "${ var.env_prefix }-subnet-1"
+    Name = "${var.env_prefix}-subnet-1"
   }
 }
 
@@ -43,7 +47,7 @@ resource "aws_subnet" "myapp_subnet-1" {
 resource "aws_internet_gateway" "myapp_igw" {
   vpc_id = aws_vpc.myapp_vpc.id
   tags = {
-    Name = "${ var.env_prefix }-internet-gateway"
+    Name = "${var.env_prefix}-internet-gateway"
   }
 }
 /*
@@ -73,7 +77,7 @@ resource "aws_default_route_table" "main-route-table" {
     gateway_id = aws_internet_gateway.myapp_igw.id
   }
   tags = {
-    Name = "${ var.env_prefix }-main-route-table"
+    Name = "${var.env_prefix}-main-route-table"
   }
 }
 
@@ -118,7 +122,7 @@ resource "aws_security_group" "myapp_sg" {
 # using default security group created while creating the vpc
 # The difference between creating a new sg and using the existing default one is the resource name
 resource "aws_default_security_group" "default_sg" {
-  vpc_id      = aws_vpc.myapp_vpc.id
+  vpc_id = aws_vpc.myapp_vpc.id
 
   ingress {
     from_port   = 8080
@@ -150,11 +154,11 @@ data "aws_ami" "latest-amazon-linux-image" {
   most_recent = true
   owners      = ["amazon"]
   filter {
-    name = "name"
+    name   = "name"
     values = ["al2023-ami-*-kernel-6.18-x86_64"]
   }
   filter {
-    name = "virtualization-type"
+    name   = "virtualization-type"
     values = ["hvm"]
   }
 }
@@ -164,28 +168,81 @@ output "ami_id" {
 }
 
 resource "aws_key_pair" "ssh_key_pair" {
-  key_name = "server-key"
+  key_name   = "server-ansible-key"
   public_key = file(var.public_key_location)
 }
 
 # Creating EC2 Server Instance
 resource "aws_instance" "myapp_server" {
-  ami           = data.aws_ami.latest-amazon-linux-image.id
-  instance_type = var.instance_type
-  subnet_id     = aws_subnet.myapp_subnet-1.id
+  ami                    = data.aws_ami.latest-amazon-linux-image.id
+  instance_type          = var.instance_type
+  subnet_id              = aws_subnet.myapp_subnet-1.id
   vpc_security_group_ids = [aws_default_security_group.default_sg.id]
-  availability_zone = var.availability_zone
+  availability_zone      = var.availability_zone
+
+  root_block_device {
+    volume_size = 40
+    volume_type = "gp3"
+    encrypted   = true
+  }
 
   associate_public_ip_address = true
-  key_name = aws_key_pair.ssh_key_pair.key_name
+  key_name                    = aws_key_pair.ssh_key_pair.key_name
 
-  user_data = file(var.user_data_script_location)
+  #user_data = file(var.user_data_script_location)
 
   # make sure server is clean when we destroy and create new server
   user_data_replace_on_change = true
 
   tags = {
     Name = "${var.env_prefix}-server"
+  }
+
+  provisioner "local-exec" {
+    working_dir = "/Users/aiden-it-consulting/PycharmProjects/PythonProjects/TWN-DevOps-BootCamp/Ansible"
+
+    interpreter = ["/bin/sh", "-c"]
+
+    environment = {
+      EC2_PUBLIC_IP = self.public_ip
+      SSH_KEY_PATH  = pathexpand(var.ssh_key_private)
+      ANSIBLE_USER  = pathexpand(var.ANSIBLE_USER)
+    }
+
+      command = <<-EOT
+      echo "Waiting for EC2 SSH readiness: $EC2_PUBLIC_IP"
+
+      attempts=0
+
+      until ssh \
+        -i "$SSH_KEY_PATH" \
+        -o BatchMode=yes \
+        -o IdentitiesOnly=yes \
+        -o ConnectTimeout=5 \
+        -o StrictHostKeyChecking=accept-new \
+        "$ANSIBLE_USER@$EC2_PUBLIC_IP" \
+        "true" >/dev/null 2>&1; do
+
+        attempts=$((attempts + 1))
+
+        if [ "$attempts" -ge 60 ]; then
+          echo "ERROR: EC2 SSH readiness timeout" >&2
+          exit 1
+        fi
+
+        echo "EC2 SSH not ready. Retrying in 5 seconds..."
+        sleep 5
+      done
+
+      echo "EC2 SSH authentication successful."
+      echo "Starting Ansible deployment..."
+
+      ansible-playbook \
+        --inventory "$EC2_PUBLIC_IP," \
+        --private-key "$SSH_KEY_PATH" \
+        --user "$ANSIBLE_USER" \
+        deploy-docker.yaml
+    EOT
   }
 
 }
