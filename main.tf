@@ -23,6 +23,7 @@ variable "user_data_script_location" {}
 # Creating our vpc
 resource "aws_vpc" "myapp_vpc" {
   cidr_block = var.vpc_cidr_block
+  enable_dns_hostnames = true
   tags = {
     Name = "${ var.env_prefix }-vpc"
   }
@@ -164,12 +165,12 @@ output "ami_id" {
 }
 
 resource "aws_key_pair" "ssh_key_pair" {
-  key_name = "server-key"
+  key_name = "server-key-pair-ansible"
   public_key = file(var.public_key_location)
 }
 
 # Creating EC2 Server Instance
-resource "aws_instance" "myapp_server" {
+resource "aws_instance" "myapp_server_one" {
   ami           = data.aws_ami.latest-amazon-linux-image.id
   instance_type = var.instance_type
   subnet_id     = aws_subnet.myapp_subnet-1.id
@@ -179,17 +180,88 @@ resource "aws_instance" "myapp_server" {
   associate_public_ip_address = true
   key_name = aws_key_pair.ssh_key_pair.key_name
 
-  user_data = file(var.user_data_script_location)
+  #user_data = file(var.user_data_script_location)
 
   # make sure server is clean when we destroy and create new server
   user_data_replace_on_change = true
 
+  root_block_device {
+    volume_size           = 40
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
   tags = {
-    Name = "${var.env_prefix}-server"
+    Name = "${var.env_prefix}-server-one"
+    Role        = "docker-server"
   }
 
 }
 
-output "ec2_public_ip" {
-  value = aws_instance.myapp_server.public_ip
+resource "aws_instance" "myapp_server_two" {
+  ami           = data.aws_ami.latest-amazon-linux-image.id
+  instance_type = var.instance_type
+  subnet_id     = aws_subnet.myapp_subnet-1.id
+  vpc_security_group_ids = [aws_default_security_group.default_sg.id]
+  availability_zone = var.availability_zone
+
+  associate_public_ip_address = true
+  key_name = aws_key_pair.ssh_key_pair.key_name
+
+  #user_data = file(var.user_data_script_location)
+
+  # make sure server is clean when we destroy and create new server
+  user_data_replace_on_change = true
+
+  root_block_device {
+    volume_size           = 40
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name = "${var.env_prefix}-server-two"
+    Role        = "docker-server"
+  }
+
+}
+
+resource "aws_instance" "myapp_server_three" {
+  ami           = data.aws_ami.latest-amazon-linux-image.id
+  instance_type = var.instance_type
+  subnet_id     = aws_subnet.myapp_subnet-1.id
+  vpc_security_group_ids = [aws_default_security_group.default_sg.id]
+  availability_zone = var.availability_zone
+
+  associate_public_ip_address = true
+  key_name = aws_key_pair.ssh_key_pair.key_name
+
+  #user_data = file(var.user_data_script_location)
+
+  # make sure server is clean when we destroy and create new server
+  user_data_replace_on_change = true
+
+  root_block_device {
+    volume_size           = 40
+    volume_type           = "gp3"
+    delete_on_termination = true
+  }
+
+  tags = {
+    Name = "${var.env_prefix}-server-three"
+    Role        = "docker-server"
+  }
+
+}
+
+output "ec2_public_ip_1" {
+  value = aws_instance.myapp_server_one.public_ip
+}
+
+output "ec2_public_ip_2" {
+  value = aws_instance.myapp_server_two.public_ip
+}
+
+output "ec2_public_ip_3" {
+  value = aws_instance.myapp_server_three.public_ip
 }
